@@ -1,0 +1,1002 @@
+<meta charset="utf-8">
+<title>Deck Buddy — Live Timing Design</title>
+<style>
+  :root {
+    --page-bg: #E8EEF4;
+    --page-text: #1E293B;
+    --page-muted: #64748B;
+    --note-bg: #FFFFFF;
+    --note-border: #D5E5F2;
+    /* App palette — Cooper's, verbatim */
+    --slate: #1E293B;
+    --slate-deep: #151E2E;
+    --cobalt: #3B82F6;
+    --glacial: #60A5FA;
+    --hydro: #F0F9FF;
+    --pink: #EC4899;
+    --bubble: #F472B6;
+    --white: #FFFFFF;
+    --cool: #94A3B8;
+    --border: #D5E5F2;
+    --text-2: #64748B;
+    --success: #0F9D58;
+    --danger: #DC2626;
+    --console-text: #F8FAFC;
+    --console-rule: #334155;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page-bg: #0F172A; --page-text: #F8FAFC; --page-muted: #94A3B8; --note-bg: #1E293B; --note-border: #334155; }
+  }
+  :root[data-theme="dark"] { --page-bg: #0F172A; --page-text: #F8FAFC; --page-muted: #94A3B8; --note-bg: #1E293B; --note-border: #334155; }
+  :root[data-theme="light"] { --page-bg: #E8EEF4; --page-text: #1E293B; --page-muted: #64748B; --note-bg: #FFFFFF; --note-border: #D5E5F2; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px 64px;
+    background: var(--page-bg); color: var(--page-text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .num { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  .intro { max-width: 720px; margin: 0 auto 28px; }
+  .intro h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .intro p { margin: 0; color: var(--page-muted); }
+
+  .controls { max-width: 1180px; margin: 0 auto 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ctl {
+    border: 1px solid var(--note-border); background: var(--note-bg); color: var(--page-text);
+    padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .ctl[aria-pressed="true"] { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
+  .ctl:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  .ctl.race[aria-pressed="true"] { background: var(--pink); border-color: var(--pink); }
+  .ctl-hint { font-size: 12.5px; color: var(--page-muted); }
+
+  /* ============ DEVICE FRAME — committed light, anchors its own colors ============ */
+  .frame-wrap { max-width: 1180px; margin: 0 auto; overflow-x: auto; }
+  .frame {
+    width: 1140px; height: 800px; background: var(--white); color: var(--slate);
+    border-radius: 18px; overflow: hidden; position: relative;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+    display: flex; flex-direction: column;
+  }
+
+  /* Command bar */
+  .cmdbar {
+    height: 56px; flex: none; background: linear-gradient(180deg, #223047 0%, var(--slate) 100%);
+    color: var(--console-text);
+    display: flex; align-items: center; gap: 20px; padding: 0 20px;
+  }
+  .mark { font-weight: 800; font-size: 17px; letter-spacing: -0.01em; }
+  .mark b { color: var(--pink); }
+  .meetname { font-size: 13px; color: var(--cool); }
+  .meetname strong { color: var(--console-text); font-weight: 600; }
+  .standings { margin-left: auto; display: flex; gap: 8px; }
+  .chip {
+    display: flex; align-items: center; gap: 7px; padding: 5px 12px 5px 7px;
+    border-radius: 999px; background: rgba(255,255,255,0.08); font-size: 13px; font-weight: 700;
+  }
+  .chip.lead { background: rgba(236,72,153,0.18); box-shadow: inset 0 0 0 1px rgba(236,72,153,0.45); }
+  .chip .dot { width: 10px; height: 10px; border-radius: 999px; }
+  .chip .pts { font-weight: 800; }
+
+  .below { flex: 1; display: flex; min-height: 0; }
+
+  /* Nav rail */
+  .rail {
+    width: 64px; flex: none; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 2px;
+    background: var(--white);
+  }
+  .rail a {
+    width: 56px; padding: 9px 0; text-align: center; text-decoration: none;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-2);
+    border-radius: 8px;
+  }
+  .rail a.on { color: var(--cobalt); background: var(--hydro); }
+  .rail a .glyph { display: block; font-size: 15px; margin-bottom: 2px; font-weight: 800; }
+
+  /* ============ CONSOLE ============ */
+  .console {
+    width: 336px; flex: none; background: linear-gradient(180deg, var(--slate) 0%, var(--slate-deep) 100%);
+    color: var(--console-text);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .c-sec-label {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: var(--cool);
+    padding: 12px 16px 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .livepulse { width: 8px; height: 8px; border-radius: 99px; background: var(--pink); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .livepulse { animation: none; } }
+
+  /* clickable swimmer names */
+  .sw { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+  .sw:hover, .sw:focus-visible { text-decoration: underline; text-decoration-color: var(--bubble); text-underline-offset: 3px; outline: none; }
+
+  .live-head { padding: 2px 16px 10px; border-bottom: 1px solid var(--console-rule); }
+  .live-ev { display: flex; align-items: baseline; gap: 10px; }
+  .live-ev .evnum { font-size: 26px; font-weight: 800; }
+  .live-ev .evname { font-size: 13.5px; line-height: 1.25; }
+  .live-sub { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+  .live-sub .heat { font-size: 12px; color: var(--cool); font-weight: 700; letter-spacing: 0.06em; }
+  .raceclock { font-size: 38px; font-weight: 700; line-height: 1; letter-spacing: -0.01em; }
+  .readybadge {
+    font-size: 12px; font-weight: 800; letter-spacing: 0.1em; color: var(--slate);
+    background: var(--glacial); padding: 4px 10px; border-radius: 4px;
+  }
+
+  .lane {
+    display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px 0 12px;
+    border-bottom: 1px solid var(--console-rule); position: relative;
+  }
+  .lane .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+  .lane .n { width: 16px; font-size: 13px; font-weight: 700; color: var(--cool); }
+  .lane .who { flex: 1; min-width: 0; }
+  .lane .who .nm { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; }
+  .lane.mine .who .nm { font-weight: 800; }
+  .lane .who .tm { font-size: 11px; color: var(--cool); font-weight: 700; letter-spacing: 0.05em; }
+  .lane.mine .who .tm { color: var(--bubble); }
+  .lane .t { font-size: 17px; font-weight: 700; }
+  .lane .t.running { color: var(--glacial); }
+  .lane .t.seed { color: var(--cool); font-size: 14px; }
+  .lane .plc { width: 26px; text-align: right; font-size: 13px; font-weight: 800; color: var(--bubble); }
+
+  .c-block { border-top: 2px solid var(--console-rule); }
+
+  .ondeck-row { display: flex; align-items: center; gap: 10px; padding: 7px 16px 7px 12px; position: relative; }
+  .ondeck-row .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+  .ondeck-row .evnum { font-size: 16px; font-weight: 800; width: 36px; }
+  .ondeck-row .body { flex: 1; min-width: 0; }
+  .ondeck-row .body .nm { font-size: 13px; font-weight: 600; line-height: 1.25; }
+  .ondeck-row .body .mine { font-size: 11.5px; color: var(--bubble); font-weight: 800; }
+  .ondeck-row .eta { font-size: 13px; color: var(--cool); font-weight: 700; }
+
+  /* PREVIOUS — two densities */
+  .prev-line {
+    display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 12.5px; position: relative;
+  }
+  .prev-line .edge { position: absolute; left: 0; top: 2px; bottom: 2px; width: 4px; }
+  .prev-line .p { width: 22px; font-weight: 800; color: var(--cool); }
+  .prev-line .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .prev-line.mine .nm { font-weight: 800; }
+  .prev-line .tt { font-weight: 700; }
+  .prev-line .dd { width: 52px; text-align: right; font-weight: 700; font-size: 12px; }
+  .prev-line .dd.drop { color: #34D399; }
+  .prev-line .dd.add { color: #F87171; }
+
+  /* state machinery: racing vs between heats */
+  .live { display: flex; flex-direction: column; min-height: 0; }
+  .frame.racing .live { flex: 1 1 auto; }
+  .frame.racing .prevwrap { flex: none; }
+  .frame.racing .prev-expanded { display: none; }
+  .frame.between .live { flex: none; }
+  .frame.between .live .lanes-live { display: none; }
+  .frame.between .prevwrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .frame.between .prev-compact { display: none; }
+  .frame.between .prev-expanded { flex: 1; min-height: 0; overflow-y: auto; }
+  .frame.between .lanes-next { display: block; }
+  .frame.racing .lanes-next { display: none; }
+  .prev-expanded { scrollbar-width: thin; scrollbar-color: var(--console-rule) transparent; }
+  .prev-head-cols {
+    display: flex; gap: 8px; padding: 2px 16px 4px; font-size: 9.5px; font-weight: 800;
+    letter-spacing: 0.1em; color: var(--console-rule); color: var(--cool); opacity: 0.7;
+  }
+  .prev-head-cols .p { width: 22px; } .prev-head-cols .nm { flex: 1; }
+  .prev-head-cols .tt { width: 58px; text-align: right; } .prev-head-cols .dd { width: 52px; text-align: right; }
+  .prev-line .tt { width: 58px; text-align: right; }
+
+  .lanes-next .lane { height: 38px; }
+
+  .conn {
+    flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-top: 1px solid var(--console-rule); background: var(--slate-deep);
+    font-size: 12px; font-weight: 700; color: var(--cool);
+  }
+  .conn .ok { width: 8px; height: 8px; border-radius: 99px; background: #34D399; }
+  .conn .src { color: var(--console-text); }
+  .conn .latency { margin-left: auto; }
+
+  /* ============ SHEET SIDE ============ */
+  .sheetside { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--white); }
+
+  .strip { flex: none; border-bottom: 2px solid var(--slate); background: var(--hydro); }
+  .strip-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 16px 0; }
+  .strip-head .lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: var(--text-2); }
+  .strip-head .ev { font-size: 12px; color: var(--text-2); }
+  .strip-head .pg { margin-left: auto; font-size: 11px; color: var(--cool); font-weight: 700; }
+  .strip-scroll { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .strip-scroll::-webkit-scrollbar { display: none; }
+  .rescard {
+    flex: 0 0 50%; scroll-snap-align: start; display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px 12px 12px; position: relative; min-width: 0;
+  }
+  .rescard + .rescard { border-left: 1px solid var(--border); }
+  .rescard .edge { position: absolute; left: 0; top: 8px; bottom: 8px; width: 4px; }
+  .rescard .place { font-size: 26px; font-weight: 800; width: 44px; line-height: 1; }
+  .rescard .place.gold { color: var(--pink); }
+  .rescard .place small { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-2); }
+  .rescard .who { flex: 1; min-width: 0; }
+  .rescard .who .nm { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .rescard.mine .who .nm { font-weight: 800; }
+  .rescard .who .sub { font-size: 12px; color: var(--text-2); font-weight: 600; }
+  .rescard .res { text-align: right; }
+  .rescard .res .t { font-size: 19px; font-weight: 700; }
+  .rescard .res .d { font-size: 12px; font-weight: 700; }
+  .rescard .res .d.drop { color: var(--success); }
+  .rescard .res .d.add { color: var(--danger); }
+  .rescard .ptsbox { text-align: center; padding-left: 4px; }
+  .rescard .ptsbox .pv { font-size: 19px; font-weight: 800; color: var(--cobalt); }
+  .rescard .ptsbox .pl { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; color: var(--text-2); }
+  .rescard.mine { background: #FDF2F8; }
+
+  .sheet { flex: 1; min-height: 0; overflow-y: auto; }
+  .sheet-toolbar { display: flex; gap: 10px; align-items: center; padding: 12px 16px 10px; }
+  .sheet-toolbar h2 { font-size: 20px; margin: 0; letter-spacing: -0.01em; flex: 1; }
+  .search {
+    flex: 2; background: var(--hydro); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; font-size: 14px; color: var(--text-2);
+  }
+  .tbtn { color: var(--cobalt); font-weight: 700; font-size: 14px; background: none; border: none; cursor: pointer; }
+  .sess {
+    display: flex; justify-content: space-between; padding: 6px 16px;
+    background: var(--hydro); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 800; letter-spacing: 0.06em;
+  }
+  .evrow {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 12px;
+    border-bottom: 1px solid var(--border); position: relative;
+  }
+  .evrow .edge { position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; }
+  .evrow .no { width: 34px; font-size: 16px; font-weight: 800; }
+  .evrow .nm { flex: 1; min-width: 0; }
+  .evrow .nm .t1 { font-size: 15px; font-weight: 600; }
+  .evrow .nm .t2 { font-size: 12px; color: var(--text-2); }
+  .evrow .status { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding-bottom: 3px; border-bottom: 2px solid transparent; }
+  .evrow .status.live { color: var(--pink); border-color: var(--pink); }
+  .evrow .status.up { color: var(--cool); border-color: var(--cool); }
+  .evrow .status.final { color: var(--slate); border-color: var(--slate); }
+
+  /* ============ SETUP VIEW ============ */
+  .setup { flex: 1; min-height: 0; overflow-y: auto; background: var(--white); padding: 0 0 40px; }
+  .setup-head { padding: 18px 24px 4px; }
+  .setup-head h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .setup-head p { margin: 4px 0 0; color: var(--text-2); font-size: 13.5px; }
+  .setup-sec { margin: 18px 24px 0; }
+  .setup-sec > h3 {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: var(--text-2);
+    margin: 0 0 8px; text-transform: uppercase;
+  }
+  .srow { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .srow:first-of-type { border-top: 2px solid var(--slate); }
+  .srow .ic {
+    width: 40px; height: 40px; border-radius: 8px; background: var(--hydro);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: var(--cobalt);
+  }
+  .srow .body { flex: 1; min-width: 0; }
+  .srow .body .t { font-size: 15px; font-weight: 700; }
+  .srow .body .s { font-size: 12.5px; color: var(--text-2); }
+  .srow .act { flex: none; font-size: 13.5px; font-weight: 700; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; }
+  .srow .act.primary { background: var(--pink); color: #fff; }
+  .srow .act.ghost { background: none; border: 1px solid var(--cool); color: var(--cobalt); }
+  .srow .stat { font-size: 12px; font-weight: 700; }
+  .srow .stat.ok { color: var(--success); }
+  .ptstable { border-top: 2px solid var(--slate); }
+  .ptstable .r { display: flex; border-bottom: 1px solid var(--border); }
+  .ptstable .c { flex: 1; padding: 8px 4px; text-align: center; font-size: 14px; font-weight: 700; }
+  .ptstable .r.hd .c { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-2); padding: 6px 4px 4px; }
+  .ptsmeta { display: flex; gap: 20px; padding: 10px 0; align-items: center; }
+  .ptsmeta .kv { font-size: 13px; color: var(--text-2); }
+  .ptsmeta .kv b { color: var(--slate); }
+
+  /* ============ POPUPS ============ */
+  .overlay {
+    position: absolute; inset: 0; background: rgba(15, 23, 42, 0.55);
+    display: none; align-items: center; justify-content: center; z-index: 20;
+  }
+  .overlay.show { display: flex; }
+  .popup {
+    width: 420px; max-width: calc(100% - 48px); max-height: 640px; overflow-y: auto;
+    background: var(--white); color: var(--slate); border-radius: 14px;
+    box-shadow: 0 30px 80px rgba(15,23,42,0.45);
+  }
+  .pop-head {
+    display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px;
+    border-bottom: 2px solid var(--slate); position: relative;
+  }
+  .pop-head .edge { position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; background: var(--pink); border-radius: 0 2px 2px 0; }
+  .pop-head .who { flex: 1; min-width: 0; }
+  .pop-name {
+    font-size: 19px; font-weight: 800; background: none; border: none; padding: 0;
+    color: var(--slate); cursor: pointer; font-family: inherit; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pop-name .chev { color: var(--cobalt); font-size: 14px; font-weight: 800; }
+  .pop-name:hover, .pop-name:focus-visible { color: var(--cobalt); outline: none; }
+  .pop-head .sub { font-size: 12.5px; color: var(--text-2); font-weight: 600; }
+  .pop-x {
+    background: none; border: none; font-size: 20px; color: var(--cool); cursor: pointer;
+    width: 32px; height: 32px; border-radius: 8px;
+  }
+  .pop-x:hover { background: var(--hydro); }
+  .pop-sec { padding: 12px 18px; }
+  .pop-sec + .pop-sec { border-top: 1px solid var(--border); }
+  .pop-sec h5 { margin: 0 0 8px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.12em; color: var(--text-2); }
+
+  /* race-part chips: neutral -> good (green) / needs-work (red) */
+  .partgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .part {
+    font-size: 12.5px; font-weight: 700; padding: 9px 4px; border-radius: 6px; text-align: center;
+    background: var(--hydro); border: 1.5px solid var(--border); color: var(--slate);
+    cursor: pointer; font-family: inherit;
+  }
+  .part:hover { border-color: var(--cobalt); }
+  .part:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 1px; }
+  .part.sel { border-color: var(--cobalt); background: #EFF6FF; }
+  .part.good { border-color: var(--success); background: #ECFDF3; color: #067647; }
+  .part.bad { border-color: var(--danger); background: #FEF3F2; color: #B42318; }
+  .part .mk { font-weight: 800; margin-right: 3px; }
+
+  /* good/needs-work picker for the tapped part */
+  .verdict { display: none; gap: 8px; margin-top: 8px; align-items: center; }
+  .verdict.show { display: flex; }
+  .verdict .vlabel { font-size: 12.5px; font-weight: 700; color: var(--text-2); flex: 1; }
+  .vbtn { flex: 1; padding: 10px 0; border-radius: 8px; font-size: 13.5px; font-weight: 800; cursor: pointer; font-family: inherit; }
+  .vbtn.good { background: #ECFDF3; border: 1.5px solid var(--success); color: #067647; }
+  .vbtn.bad { background: #FEF3F2; border: 1.5px solid var(--danger); color: #B42318; }
+
+  /* flagged parts with write-in */
+  .flagged { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .flagrow { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .flagrow .fr-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    font-size: 12.5px; font-weight: 800;
+  }
+  .flagrow.good .fr-head { background: #ECFDF3; color: #067647; }
+  .flagrow.bad .fr-head { background: #FEF3F2; color: #B42318; }
+  .flagrow .fr-head .rm {
+    margin-left: auto; background: none; border: none; cursor: pointer; color: inherit;
+    font-size: 14px; font-weight: 800; opacity: 0.6; padding: 0 2px;
+  }
+  .flagrow .fr-head .rm:hover { opacity: 1; }
+  .flagrow input {
+    width: 100%; border: none; border-top: 1px solid var(--border); padding: 9px 12px;
+    font-size: 13px; font-family: inherit; color: var(--slate); background: var(--white);
+  }
+  .flagrow input::placeholder { color: var(--cool); }
+  .flagrow input:focus { outline: none; background: var(--hydro); }
+
+  .noteinput {
+    margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--hydro);
+    padding: 10px 12px; font-size: 13.5px; color: var(--text-2);
+  }
+  .pop-actions { display: flex; gap: 8px; padding: 12px 18px 16px; }
+  .pop-actions .a { flex: 1; padding: 12px 0; border-radius: 8px; font-size: 14px; font-weight: 800; border: none; cursor: pointer; }
+  .pop-actions .a.note { background: var(--pink); color: #fff; }
+  .pop-actions .a.dq { background: none; border: 1.5px solid var(--danger); color: var(--danger); }
+  .pop-actions .a.scr { background: none; border: 1.5px solid var(--cool); color: var(--text-2); }
+
+  /* profile popup */
+  .prof-grid { display: flex; gap: 0; border-top: 2px solid var(--slate); }
+  .prof-grid .cell { flex: 1; padding: 10px 4px; text-align: center; border-bottom: 1px solid var(--border); }
+  .prof-grid .cell .v { font-size: 17px; font-weight: 800; }
+  .prof-grid .cell .k { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; color: var(--text-2); }
+  .prof-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .prof-row .ev { flex: 1; font-weight: 600; }
+  .prof-row .tt { font-weight: 700; }
+  .prof-row .dd { width: 52px; text-align: right; font-weight: 700; font-size: 12px; }
+  .prof-row .dd.drop { color: var(--success); }
+  .prof-row .dd.add { color: var(--danger); }
+  .prof-note { font-size: 12.5px; color: var(--text-2); padding-top: 8px; }
+
+  /* Annotations */
+  .notes { max-width: 1180px; margin: 26px auto 0; display: none; }
+  .notes.show { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .note {
+    background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .note .k {
+    display: inline-flex; width: 22px; height: 22px; border-radius: 99px; background: var(--cobalt);
+    color: #fff; font-size: 12px; font-weight: 800; align-items: center; justify-content: center;
+    margin-bottom: 6px;
+  }
+  .note h4 { margin: 0 0 4px; font-size: 14px; }
+  .note p { margin: 0; font-size: 13px; color: var(--page-muted); line-height: 1.5; }
+</style>
+
+<div class="intro">
+  <h1>Deck Buddy — Live Timing</h1>
+  <p>Design mockup, v0.4 proposal · rev 2. iPad landscape 1140×800. Tap any swimmer's name. Toggle race state to see the console re-balance.</p>
+</div>
+
+<div class="controls">
+  <button class="ctl" id="btn-day" aria-pressed="true">Meet Day</button>
+  <button class="ctl" id="btn-setup" aria-pressed="false">Meet Setup &amp; Import</button>
+  <button class="ctl race" id="btn-race" aria-pressed="true">Race running</button>
+  <button class="ctl" id="btn-notes" aria-pressed="false">Design notes</button>
+  <span class="ctl-hint">“Race running” off = between heats: Previous grows, next start list shows.</span>
+</div>
+
+<div class="frame-wrap">
+<div class="frame racing" id="frame">
+  <!-- Command bar -->
+  <div class="cmdbar">
+    <span class="mark">Deck<b>Buddy</b></span>
+    <span class="meetname"><strong>Spring Invitational 2026</strong> · SCY · Day 1 · <span class="num">Event 4 of 8</span></span>
+    <div class="standings">
+      <span class="chip lead"><span class="dot" style="background:#EC4899"></span>SHRK <span class="pts num">86</span></span>
+      <span class="chip"><span class="dot" style="background:#3B82F6"></span>BLUD <span class="pts num">74</span></span>
+      <span class="chip"><span class="dot" style="background:#60A5FA"></span>RIPT <span class="pts num">61</span></span>
+      <span class="chip"><span class="dot" style="background:#94A3B8"></span>WAVE <span class="pts num">48</span></span>
+    </div>
+  </div>
+
+  <div class="below">
+    <nav class="rail">
+      <a class="on" href="#"><span class="glyph">≡</span>Sheet</a>
+      <a href="#"><span class="glyph">1·2</span>Results</a>
+      <a href="#"><span class="glyph">✎</span>Entries</a>
+      <a href="#"><span class="glyph">~</span>Team</a>
+      <a href="#" id="rail-setup"><span class="glyph">⚙</span>Setup</a>
+    </nav>
+
+    <!-- ============ CONSOLE ============ -->
+    <aside class="console">
+      <div class="live">
+        <div class="c-sec-label" id="live-label"><span class="livepulse" id="pulse"></span> <span id="live-label-txt">LIVE — RACING</span></div>
+        <div class="live-head">
+          <div class="live-ev">
+            <span class="evnum num">#4</span>
+            <span class="evname">Boys 13–14 100 Breaststroke</span>
+          </div>
+          <div class="live-sub">
+            <span class="heat">HEAT 2 OF 2</span>
+            <span class="raceclock num" id="clock">1:04.7</span>
+            <span class="readybadge" id="ready" style="display:none">READY</span>
+          </div>
+        </div>
+
+        <!-- racing: running lanes -->
+        <div class="lanes-live" id="lanes">
+          <div class="lane">
+            <span class="edge" style="background:#3B82F6"></span><span class="n num">1</span>
+            <div class="who"><button class="sw nm" data-sw="Marcus Webb" data-team="BLUD" data-ctx="Lane 1 · #4 H2">Marcus Webb</button><div class="tm">BLUD</div></div>
+            <span class="t num running" data-run="63.9">1:03.9</span><span class="plc"></span>
+          </div>
+          <div class="lane mine">
+            <span class="edge" style="background:#EC4899"></span><span class="n num">2</span>
+            <div class="who"><button class="sw nm" data-sw="Liam Chen" data-team="SHRK" data-ctx="Lane 2 · #4 H2">Liam Chen</button><div class="tm">SHRK</div></div>
+            <span class="t num">1:02.44</span><span class="plc num">1</span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#60A5FA"></span><span class="n num">3</span>
+            <div class="who"><button class="sw nm" data-sw="Diego Ruiz" data-team="RIPT" data-ctx="Lane 3 · #4 H2">Diego Ruiz</button><div class="tm">RIPT</div></div>
+            <span class="t num">1:03.87</span><span class="plc num">2</span>
+          </div>
+          <div class="lane mine">
+            <span class="edge" style="background:#EC4899"></span><span class="n num">4</span>
+            <div class="who"><button class="sw nm" data-sw="Owen Park" data-team="SHRK" data-ctx="Lane 4 · #4 H2">Owen Park</button><div class="tm">SHRK</div></div>
+            <span class="t num running" data-run="64.1">1:04.1</span><span class="plc"></span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#94A3B8"></span><span class="n num">5</span>
+            <div class="who"><button class="sw nm" data-sw="Jake Moss" data-team="WAVE" data-ctx="Lane 5 · #4 H2">Jake Moss</button><div class="tm">WAVE</div></div>
+            <span class="t num running" data-run="64.4">1:04.4</span><span class="plc"></span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#3B82F6"></span><span class="n num">6</span>
+            <div class="who"><button class="sw nm" data-sw="Theo Grant" data-team="BLUD" data-ctx="Lane 6 · #4 H2">Theo Grant</button><div class="tm">BLUD</div></div>
+            <span class="t num">1:04.02</span><span class="plc num">3</span>
+          </div>
+        </div>
+
+        <!-- between heats: next start list (seeds, no times yet) -->
+        <div class="lanes-next" id="lanes-next" style="display:none">
+          <div class="lane">
+            <span class="edge" style="background:#3B82F6"></span><span class="n num">1</span>
+            <div class="who"><button class="sw nm" data-sw="Marcus Webb" data-team="BLUD" data-ctx="Lane 1 · #4 H2">Marcus Webb</button></div>
+            <span class="t num seed">1:05.20</span>
+          </div>
+          <div class="lane mine">
+            <span class="edge" style="background:#EC4899"></span><span class="n num">2</span>
+            <div class="who"><button class="sw nm" data-sw="Liam Chen" data-team="SHRK" data-ctx="Lane 2 · #4 H2">Liam Chen</button></div>
+            <span class="t num seed">1:03.10</span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#60A5FA"></span><span class="n num">3</span>
+            <div class="who"><button class="sw nm" data-sw="Diego Ruiz" data-team="RIPT" data-ctx="Lane 3 · #4 H2">Diego Ruiz</button></div>
+            <span class="t num seed">1:04.55</span>
+          </div>
+          <div class="lane mine">
+            <span class="edge" style="background:#EC4899"></span><span class="n num">4</span>
+            <div class="who"><button class="sw nm" data-sw="Owen Park" data-team="SHRK" data-ctx="Lane 4 · #4 H2">Owen Park</button></div>
+            <span class="t num seed">1:05.80</span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#94A3B8"></span><span class="n num">5</span>
+            <div class="who"><button class="sw nm" data-sw="Jake Moss" data-team="WAVE" data-ctx="Lane 5 · #4 H2">Jake Moss</button></div>
+            <span class="t num seed">1:06.10</span>
+          </div>
+          <div class="lane">
+            <span class="edge" style="background:#3B82F6"></span><span class="n num">6</span>
+            <div class="who"><button class="sw nm" data-sw="Theo Grant" data-team="BLUD" data-ctx="Lane 6 · #4 H2">Theo Grant</button></div>
+            <span class="t num seed">1:05.95</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="c-block">
+        <div class="c-sec-label">ON DECK</div>
+        <div class="ondeck-row">
+          <span class="edge" style="background:#EC4899"></span>
+          <span class="evnum num">#5</span>
+          <div class="body">
+            <div class="nm">Women Open 100 Butterfly · Heat 1</div>
+            <div class="mine"><button class="sw" data-sw="Maya Torres" data-team="SHRK" data-ctx="Lane 3 · #5 H1">Maya Torres</button> — Lane 3 · seed <span class="num">1:03.10</span></div>
+          </div>
+          <span class="eta num">~2 min</span>
+        </div>
+      </div>
+
+      <div class="c-block prevwrap">
+        <div class="c-sec-label">PREVIOUS — #4 HEAT 1</div>
+
+        <!-- compact (racing) -->
+        <div class="prev-compact">
+          <div class="prev-line"><span class="p num">1</span><button class="sw nm" data-sw="Cole Bennett" data-team="RIPT" data-ctx="#4 H1 · 1st">Cole Bennett · RIPT</button><span class="tt num">1:05.11</span></div>
+          <div class="prev-line mine"><span class="edge" style="background:#EC4899"></span><span class="p num">2</span><button class="sw nm" data-sw="Noah Patel" data-team="SHRK" data-ctx="#4 H1 · 2nd">Noah Patel · SHRK</button><span class="tt num">1:06.84</span></div>
+          <div class="prev-line"><span class="p num">3</span><button class="sw nm" data-sw="Sam Ford" data-team="WAVE" data-ctx="#4 H1 · 3rd">Sam Ford · WAVE</button><span class="tt num">1:07.40</span></div>
+        </div>
+
+        <!-- expanded (between heats): scrollable, heat places + times + improvement -->
+        <div class="prev-expanded">
+          <div class="prev-head-cols"><span class="p">PL</span><span class="nm">SWIMMER</span><span class="tt">TIME</span><span class="dd">VS SEED</span></div>
+          <div class="prev-line"><span class="p num">1</span><button class="sw nm" data-sw="Cole Bennett" data-team="RIPT" data-ctx="#4 H1 · 1st">Cole Bennett · RIPT</button><span class="tt num">1:05.11</span><span class="dd num drop">−0.84</span></div>
+          <div class="prev-line mine"><span class="edge" style="background:#EC4899"></span><span class="p num">2</span><button class="sw nm" data-sw="Noah Patel" data-team="SHRK" data-ctx="#4 H1 · 2nd">Noah Patel · SHRK</button><span class="tt num">1:06.84</span><span class="dd num drop">−1.10</span></div>
+          <div class="prev-line"><span class="p num">3</span><button class="sw nm" data-sw="Sam Ford" data-team="WAVE" data-ctx="#4 H1 · 3rd">Sam Ford · WAVE</button><span class="tt num">1:07.40</span><span class="dd num add">+0.22</span></div>
+          <div class="prev-line"><span class="p num">4</span><button class="sw nm" data-sw="Eli Burke" data-team="BLUD" data-ctx="#4 H1 · 4th">Eli Burke · BLUD</button><span class="tt num">1:08.02</span><span class="dd num drop">−0.31</span></div>
+          <div class="prev-line mine"><span class="edge" style="background:#EC4899"></span><span class="p num">5</span><button class="sw nm" data-sw="Reid Cooper" data-team="SHRK" data-ctx="#4 H1 · 5th">Reid Cooper · SHRK</button><span class="tt num">1:08.55</span><span class="dd num add">+0.94</span></div>
+          <div class="prev-line"><span class="p num">6</span><button class="sw nm" data-sw="Max Doyle" data-team="RIPT" data-ctx="#4 H1 · 6th">Max Doyle · RIPT</button><span class="tt num">1:09.13</span><span class="dd num add">+1.40</span></div>
+          <div class="c-sec-label" style="padding-top:10px">#3 GIRLS 13–14 100 BACK — FINAL</div>
+          <div class="prev-line mine"><span class="edge" style="background:#EC4899"></span><span class="p num">1</span><button class="sw nm" data-sw="Nora Diaz" data-team="SHRK" data-ctx="#3 · 1st · 20 pts">Nora Diaz · SHRK</button><span class="tt num">1:04.88</span><span class="dd num drop">−1.32</span></div>
+          <div class="prev-line"><span class="p num">2</span><button class="sw nm" data-sw="Ivy Tran" data-team="BLUD" data-ctx="#3 · 2nd · 17 pts">Ivy Tran · BLUD</button><span class="tt num">1:05.20</span><span class="dd num drop">−0.44</span></div>
+          <div class="prev-line"><span class="p num">3</span><button class="sw nm" data-sw="Zoe Kim" data-team="RIPT" data-ctx="#3 · 3rd · 16 pts">Zoe Kim · RIPT</button><span class="tt num">1:05.94</span><span class="dd num add">+0.31</span></div>
+          <div class="prev-line mine"><span class="edge" style="background:#EC4899"></span><span class="p num">4</span><button class="sw nm" data-sw="Ava Chen" data-team="SHRK" data-ctx="#3 · 4th · 15 pts">Ava Chen · SHRK</button><span class="tt num">1:06.10</span><span class="dd num drop">−0.22</span></div>
+          <div class="prev-line"><span class="p num">5</span><button class="sw nm" data-sw="Mia Santos" data-team="WAVE" data-ctx="#3 · 5th · 14 pts">Mia Santos · WAVE</button><span class="tt num">1:07.44</span><span class="dd num add">+1.02</span></div>
+        </div>
+      </div>
+
+      <div class="conn">
+        <span class="ok"></span><span class="src">Colorado Gen7</span> · pads + backup
+        <span class="latency num">0.3s</span>
+      </div>
+    </aside>
+
+    <!-- ============ SHEET SIDE ============ -->
+    <div class="sheetside" id="view-day">
+      <div class="strip">
+        <div class="strip-head">
+          <span class="lbl">LAST RACE</span>
+          <span class="ev">#3 Girls 13–14 100 Backstroke — Final</span>
+          <span class="pg num" id="strip-pg">1–2 of 6</span>
+        </div>
+        <div class="strip-scroll" id="strip">
+          <div class="rescard mine">
+            <span class="edge" style="background:#EC4899"></span>
+            <div class="place num gold">1<small>PLACE</small></div>
+            <div class="who"><button class="sw nm" data-sw="Nora Diaz" data-team="SHRK" data-ctx="#3 · 1st · 20 pts">Nora Diaz</button><div class="sub">SHRK · Lane 4</div></div>
+            <div class="res"><div class="t num">1:04.88</div><div class="d num drop">−1.32</div></div>
+            <div class="ptsbox"><div class="pv num">20</div><div class="pl">PTS</div></div>
+          </div>
+          <div class="rescard">
+            <span class="edge" style="background:#3B82F6"></span>
+            <div class="place num">2<small>PLACE</small></div>
+            <div class="who"><button class="sw nm" data-sw="Ivy Tran" data-team="BLUD" data-ctx="#3 · 2nd · 17 pts">Ivy Tran</button><div class="sub">BLUD · Lane 3</div></div>
+            <div class="res"><div class="t num">1:05.20</div><div class="d num drop">−0.44</div></div>
+            <div class="ptsbox"><div class="pv num">17</div><div class="pl">PTS</div></div>
+          </div>
+          <div class="rescard">
+            <span class="edge" style="background:#60A5FA"></span>
+            <div class="place num">3<small>PLACE</small></div>
+            <div class="who"><button class="sw nm" data-sw="Zoe Kim" data-team="RIPT" data-ctx="#3 · 3rd · 16 pts">Zoe Kim</button><div class="sub">RIPT · Lane 5</div></div>
+            <div class="res"><div class="t num">1:05.94</div><div class="d num add">+0.31</div></div>
+            <div class="ptsbox"><div class="pv num">16</div><div class="pl">PTS</div></div>
+          </div>
+          <div class="rescard mine">
+            <span class="edge" style="background:#EC4899"></span>
+            <div class="place num">4<small>PLACE</small></div>
+            <div class="who"><button class="sw nm" data-sw="Ava Chen" data-team="SHRK" data-ctx="#3 · 4th · 15 pts">Ava Chen</button><div class="sub">SHRK · Lane 2</div></div>
+            <div class="res"><div class="t num">1:06.10</div><div class="d num drop">−0.22</div></div>
+            <div class="ptsbox"><div class="pv num">15</div><div class="pl">PTS</div></div>
+          </div>
+          <div class="rescard">
+            <span class="edge" style="background:#94A3B8"></span>
+            <div class="place num">5<small>PLACE</small></div>
+            <div class="who"><button class="sw nm" data-sw="Mia Santos" data-team="WAVE" data-ctx="#3 · 5th · 14 pts">Mia Santos</button><div class="sub">WAVE · Lane 6</div></div>
+            <div class="res"><div class="t num">1:07.44</div><div class="d num add">+1.02</div></div>
+            <div class="ptsbox"><div class="pv num">14</div><div class="pl">PTS</div></div>
+          </div>
+          <div class="rescard">
+            <span class="edge" style="background:#3B82F6"></span>
+            <div class="place num">—<small>DQ</small></div>
+            <div class="who"><button class="sw nm" data-sw="Ella Novak" data-team="BLUD" data-ctx="#3 · DQ — turn">Ella Novak</button><div class="sub">BLUD · Lane 1 · <span style="color:#DC2626;font-weight:700">DQ — turn</span></div></div>
+            <div class="res"><div class="t num" style="color:#94A3B8">1:05.71</div></div>
+            <div class="ptsbox"><div class="pv num" style="color:#94A3B8">0</div><div class="pl">PTS</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sheet">
+        <div class="sheet-toolbar">
+          <h2>Meet Sheet</h2>
+          <span class="search">Search events or swimmers</span>
+          <button class="tbtn">Filter</button>
+        </div>
+        <div class="sess"><span>DAY 1 — MORNING SESSION</span><span class="num">9:00 AM</span></div>
+        <div class="evrow">
+          <span class="no num">#1</span>
+          <div class="nm"><div class="t1">Girls 11–12 50 Freestyle</div><div class="t2 num">2 heats · Nora 1st +20</div></div>
+          <span class="status final">FINAL</span>
+        </div>
+        <div class="evrow">
+          <span class="no num">#2</span>
+          <div class="nm"><div class="t1">Boys 11–12 100 Freestyle</div><div class="t2 num">2 heats</div></div>
+          <span class="status final">FINAL</span>
+        </div>
+        <div class="evrow">
+          <span class="no num">#3</span>
+          <div class="nm"><div class="t1">Girls 13–14 100 Backstroke</div><div class="t2 num">2 heats · Nora 1st +20 · Ava 4th +15</div></div>
+          <span class="status final">FINAL</span>
+        </div>
+        <div class="evrow" style="background:#FDF2F8">
+          <span class="edge" style="background:#EC4899"></span>
+          <span class="no num">#4</span>
+          <div class="nm"><div class="t1">Boys 13–14 100 Breaststroke</div><div class="t2">Heat 2 in the water — Liam L2, Owen L4</div></div>
+          <span class="status live">RACING</span>
+        </div>
+        <div class="sess"><span>DAY 2 — MORNING SESSION</span><span class="num">9:30 AM</span></div>
+        <div class="evrow">
+          <span class="edge" style="background:#EC4899"></span>
+          <span class="no num">#5</span>
+          <div class="nm"><div class="t1">Women Open 100 Butterfly</div><div class="t2 num">2 heats · Maya L3 seed 1:03.10</div></div>
+          <span class="status up">UP NEXT</span>
+        </div>
+        <div class="evrow">
+          <span class="no num">#6</span>
+          <div class="nm"><div class="t1">Men Open 200 IM</div><div class="t2 num">2 heats</div></div>
+          <span class="status up">UPCOMING</span>
+        </div>
+        <div class="evrow">
+          <span class="edge" style="background:#EC4899"></span>
+          <span class="no num">#7</span>
+          <div class="nm"><div class="t1">Mixed Open 200 Freestyle Relay</div><div class="t2">SHRK A — leg 4 open</div></div>
+          <span class="status up">UPCOMING</span>
+        </div>
+        <div class="evrow">
+          <span class="no num">#8</span>
+          <div class="nm"><div class="t1">Mixed Open 200 Medley Relay</div><div class="t2 num">2 heats</div></div>
+          <span class="status up">UPCOMING</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SETUP VIEW ============ -->
+    <div class="sheetside" id="view-setup" style="display:none">
+      <div class="setup">
+        <div class="setup-head">
+          <h2>Meet Setup &amp; Import</h2>
+          <p>Connect timing, bring in entries and results, and set how this meet scores.</p>
+        </div>
+        <div class="setup-sec">
+          <h3>Timing System</h3>
+          <div class="srow">
+            <span class="ic num">CTS</span>
+            <div class="body"><div class="t">Colorado Gen7</div><div class="s">Pads + backup buttons · feed on local network</div></div>
+            <span class="stat ok">● Connected · 0.3s</span>
+            <button class="act ghost">Configure</button>
+          </div>
+          <div class="srow">
+            <span class="ic num">DAK</span>
+            <div class="body"><div class="t">Daktronics OmniSport</div><div class="s">Serial-over-IP</div></div>
+            <button class="act ghost">Connect</button>
+          </div>
+          <div class="srow">
+            <span class="ic num">✎</span>
+            <div class="body"><div class="t">Manual timing</div><div class="s">Stopwatch entry, no console — the offline fallback, always available</div></div>
+            <button class="act ghost">Use manual</button>
+          </div>
+        </div>
+        <div class="setup-sec">
+          <h3>Import</h3>
+          <div class="srow">
+            <span class="ic num">HY3</span>
+            <div class="body"><div class="t">Meet entries — Hy-Tek</div><div class="s">.hy3 / .ev3 from Meet Manager · builds events, heats, lanes, seeds</div></div>
+            <button class="act primary">Import file</button>
+          </div>
+          <div class="srow">
+            <span class="ic num">CL2</span>
+            <div class="body"><div class="t">Results — Hy-Tek / CSV</div><div class="s">.cl2 / .csv · fills results for finished events, recomputes placing &amp; points</div></div>
+            <button class="act ghost">Import file</button>
+          </div>
+          <div class="srow">
+            <span class="ic num">＋</span>
+            <div class="body"><div class="t">New meet from scratch</div><div class="s">Name, course, dates, sessions — then add events by hand</div></div>
+            <button class="act ghost">Create meet</button>
+          </div>
+        </div>
+        <div class="setup-sec">
+          <h3>Scoring — Points per place</h3>
+          <div class="ptstable num">
+            <div class="r hd">
+              <span class="c">1</span><span class="c">2</span><span class="c">3</span><span class="c">4</span>
+              <span class="c">5</span><span class="c">6</span><span class="c">7</span><span class="c">8</span>
+            </div>
+            <div class="r">
+              <span class="c">20</span><span class="c">17</span><span class="c">16</span><span class="c">15</span>
+              <span class="c">14</span><span class="c">13</span><span class="c">12</span><span class="c">11</span>
+            </div>
+            <div class="r hd">
+              <span class="c">9</span><span class="c">10</span><span class="c">11</span><span class="c">12</span>
+              <span class="c">13</span><span class="c">14</span><span class="c">15</span><span class="c">16</span>
+            </div>
+            <div class="r">
+              <span class="c">9</span><span class="c">7</span><span class="c">6</span><span class="c">5</span>
+              <span class="c">4</span><span class="c">3</span><span class="c">2</span><span class="c">1</span>
+            </div>
+          </div>
+          <div class="ptsmeta">
+            <span class="kv">Relays score <b>2×</b></span>
+            <span class="kv">DQ scores <b>0</b></span>
+            <span class="kv">Preset: <b>League 16-place</b></span>
+            <button class="tbtn">Edit table</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ POPUP 1: swimmer actions (notes / DQ) ============ -->
+  <div class="overlay" id="ov-act">
+    <div class="popup" role="dialog" aria-label="Swimmer actions">
+      <div class="pop-head">
+        <span class="edge"></span>
+        <div class="who">
+          <button class="pop-name" id="act-name">Liam Chen <span class="chev">› profile</span></button>
+          <div class="sub" id="act-sub">SHRK · Lane 2 · #4 H2</div>
+        </div>
+        <button class="pop-x" data-close="ov-act">✕</button>
+      </div>
+      <div class="pop-sec">
+        <h5>RACE NOTES — TAP A PART</h5>
+        <div class="partgrid" id="parts"></div>
+        <div class="verdict" id="verdict">
+          <span class="vlabel" id="v-label">Turns — how was it?</span>
+          <button class="vbtn good" id="v-good">✓ Good</button>
+          <button class="vbtn bad" id="v-bad">✗ Needs work</button>
+        </div>
+        <div class="flagged" id="flagged"></div>
+        <div class="noteinput">Anything else…</div>
+      </div>
+      <div class="pop-actions">
+        <button class="a note">Save note</button>
+        <button class="a dq">Mark DQ</button>
+        <button class="a scr">Scratch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ POPUP 2: profile ============ -->
+  <div class="overlay" id="ov-prof">
+    <div class="popup" role="dialog" aria-label="Swimmer profile">
+      <div class="pop-head">
+        <span class="edge"></span>
+        <div class="who">
+          <span class="pop-name" style="cursor:default" id="prof-name">Liam Chen</span>
+          <div class="sub" id="prof-sub">SHRK · Boys 13–14</div>
+        </div>
+        <button class="pop-x" data-close="ov-prof">✕</button>
+      </div>
+      <div class="pop-sec">
+        <div class="prof-grid">
+          <div class="cell"><div class="v num">3</div><div class="k">EVENTS TODAY</div></div>
+          <div class="cell"><div class="v num" style="color:var(--success)">−1.54</div><div class="k">TOTAL DROP</div></div>
+          <div class="cell"><div class="v num" style="color:var(--cobalt)">27</div><div class="k">PTS EARNED</div></div>
+        </div>
+      </div>
+      <div class="pop-sec">
+        <h5>TODAY</h5>
+        <div class="prof-row"><span class="ev">#4 100 Breast · H1</span><span class="tt num">1:16.20</span><span class="dd num drop">−0.22</span></div>
+        <div class="prof-row"><span class="ev">#6 200 IM · upcoming</span><span class="tt num" style="color:var(--cool)">seed 2:24.90</span><span class="dd"></span></div>
+        <div class="prof-row"><span class="ev">#7 200 FR Relay · leg 2</span><span class="tt num" style="color:var(--cool)">—</span><span class="dd"></span></div>
+        <div class="prof-note">2 notes · last: “breathing pattern on back half” — tap to open full profile</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="notes" id="notes">
+  <div class="note"><span class="k">1</span><h4>Two console states, one height budget</h4>
+    <p>While a race runs, LIVE owns the column and PREVIOUS compresses to its top three. Between heats there's nothing to watch live — so the start list of the next heat shows compact seeds and PREVIOUS expands into a scrollable results panel: heat places, times, and improvement vs seed. The moment the feed reports a start, it snaps back. Nothing ever overflows the 800pt frame.</p></div>
+  <div class="note"><span class="k">2</span><h4>Every name is a control</h4>
+    <p>Any swimmer name — lanes, On Deck, Previous, the Last Race strip — opens the action popup: race notes, mark DQ, scratch. The name in that popup's header is a second control that opens the profile popup (today's swims, drop, points). Two taps from any race to any swimmer's day. Names underline on press so the affordance is discoverable without decoration.</p></div>
+  <div class="note"><span class="k">8</span><h4>Notes are structured coaching data</h4>
+    <p>The note sheet lists the eight parts of a race a coach actually talks about — start, underwater, breakout, stroke, breathing, turns, pacing, finish. Tap a part, call it good or needs-work, and a write-in line appears for the specifics, labeled either way. What saves isn't a text blob but part + verdict + detail, so a profile can later say “turns flagged needs-work three meets running.”</p></div>
+  <div class="note"><span class="k">3</span><h4>“Yours” is shown, not said</h4>
+    <p>The “— yours” labels are gone. Your swimmers carry the pink 4pt edge, a bold name, and a pink team abbreviation; every other team stays regular weight with its own accent edge. On a bright deck, weight + edge reads faster than a word.</p></div>
+  <div class="note"><span class="k">4</span><h4>The race clock is the display moment</h4>
+    <p>38pt tabular mono. Running lanes tick in Glacial Blue; finished lanes freeze white with their place in Bubblegum. Between heats the clock yields to a READY badge in Glacial — the color itself says “armed, not racing.”</p></div>
+  <div class="note"><span class="k">5</span><h4>Last Race strip: place, time, drop, points</h4>
+    <p>Two snap-scroll cards per view, auto-advancing, pausing on touch. First place reads in Vibrant Pink. The DQ card shows the struck time, the reason, and 0 pts — never color alone.</p></div>
+  <div class="note"><span class="k">6</span><h4>Connection honesty</h4>
+    <p>The footer names the source and latency. If the feed drops it flips amber, running times hide, and estimates are labeled as estimates — per the product's “never silently wrong” rule.</p></div>
+  <div class="note"><span class="k">7</span><h4>Setup &amp; Import keeps the program grammar</h4>
+    <p>Rows and rules, not cards. One pink primary per section. The points table is the app's real 16-place table, editable, with relay 2× and DQ = 0 stated in words.</p></div>
+</div>
+
+<script>
+  // View toggle
+  const day = document.getElementById('view-day'), setup = document.getElementById('view-setup');
+  const bDay = document.getElementById('btn-day'), bSetup = document.getElementById('btn-setup');
+  function show(which) {
+    day.style.display = which === 'day' ? 'flex' : 'none';
+    setup.style.display = which === 'setup' ? 'flex' : 'none';
+    bDay.setAttribute('aria-pressed', which === 'day');
+    bSetup.setAttribute('aria-pressed', which === 'setup');
+  }
+  bDay.onclick = () => show('day');
+  bSetup.onclick = () => show('setup');
+  document.getElementById('rail-setup').onclick = (e) => { e.preventDefault(); show('setup'); };
+
+  // Notes toggle
+  const bNotes = document.getElementById('btn-notes'), notes = document.getElementById('notes');
+  bNotes.onclick = () => {
+    const on = notes.classList.toggle('show');
+    bNotes.setAttribute('aria-pressed', on);
+  };
+
+  // Race state toggle
+  const frame = document.getElementById('frame');
+  const bRace = document.getElementById('btn-race');
+  const clockEl = document.getElementById('clock'), ready = document.getElementById('ready');
+  const lanes = document.getElementById('lanes'), lanesNext = document.getElementById('lanes-next');
+  const liveLabel = document.getElementById('live-label-txt'), pulse = document.getElementById('pulse');
+  let racing = true;
+  bRace.onclick = () => {
+    racing = !racing;
+    bRace.setAttribute('aria-pressed', racing);
+    bRace.textContent = racing ? 'Race running' : 'Between heats';
+    frame.classList.toggle('racing', racing);
+    frame.classList.toggle('between', !racing);
+    clockEl.style.display = racing ? '' : 'none';
+    ready.style.display = racing ? 'none' : '';
+    lanes.style.display = racing ? '' : 'none';
+    lanesNext.style.display = racing ? 'none' : '';
+    liveLabel.textContent = racing ? 'LIVE — RACING' : 'NEXT UP — BEHIND THE BLOCKS';
+    pulse.style.background = racing ? 'var(--pink)' : 'var(--glacial)';
+  };
+
+  // Clock + running lanes
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t = 64.7;
+  const fmt = (s) => { const m = Math.floor(s / 60); const r = (s - m * 60).toFixed(1); return m ? m + ':' + (r < 10 ? '0' : '') + r : r; };
+  if (!reduced) setInterval(() => {
+    if (!racing) return;
+    t += 0.1; clockEl.textContent = fmt(t);
+    document.querySelectorAll('[data-run]').forEach(el => {
+      const v = parseFloat(el.dataset.run) + (t - 64.7);
+      el.textContent = fmt(Math.round(v * 10) / 10);
+    });
+  }, 100);
+
+  // Strip auto-advance
+  const strip = document.getElementById('strip'), pg = document.getElementById('strip-pg');
+  let page = 0, hold = false;
+  strip.addEventListener('pointerdown', () => { hold = true; });
+  strip.addEventListener('pointerup', () => { setTimeout(() => hold = false, 6000); });
+  strip.addEventListener('scroll', () => {
+    const p = Math.round(strip.scrollLeft / (strip.clientWidth / 2));
+    pg.textContent = (p + 1) + '–' + Math.min(p + 2, 6) + ' of 6';
+  });
+  if (!reduced) setInterval(() => {
+    if (hold) return;
+    page = (page + 1) % 3;
+    strip.scrollTo({ left: page * strip.clientWidth, behavior: 'smooth' });
+  }, 4000);
+
+  // Structured race notes: tap a part -> good / needs-work -> write-in
+  const PARTS = ['Start', 'Underwater', 'Breakout', 'Stroke', 'Breathing', 'Turns', 'Pacing', 'Finish'];
+  const partsEl = document.getElementById('parts'), verdictEl = document.getElementById('verdict');
+  const vLabel = document.getElementById('v-label'), flaggedEl = document.getElementById('flagged');
+  let noteState = {}; // part -> { v: 'good'|'bad', text }
+  let pending = null;
+
+  PARTS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'part'; b.dataset.part = p; b.textContent = p;
+    b.onclick = () => {
+      pending = p;
+      vLabel.textContent = p + ' — how was it?';
+      verdictEl.classList.add('show');
+      partsEl.querySelectorAll('.part').forEach(x =>
+        x.classList.toggle('sel', x.dataset.part === p && !noteState[p]));
+    };
+    partsEl.appendChild(b);
+  });
+
+  function renderNote() {
+    partsEl.querySelectorAll('.part').forEach(b => {
+      const st = noteState[b.dataset.part];
+      b.classList.toggle('good', !!st && st.v === 'good');
+      b.classList.toggle('bad', !!st && st.v === 'bad');
+      b.classList.remove('sel');
+      b.innerHTML = st
+        ? '<span class="mk">' + (st.v === 'good' ? '✓' : '✗') + '</span>' + b.dataset.part
+        : b.dataset.part;
+    });
+    flaggedEl.innerHTML = '';
+    Object.keys(noteState).forEach(p => {
+      const st = noteState[p];
+      const row = document.createElement('div');
+      row.className = 'flagrow ' + st.v;
+      const head = document.createElement('div');
+      head.className = 'fr-head';
+      head.textContent = (st.v === 'good' ? '✓ ' : '✗ ') + p;
+      const rm = document.createElement('button');
+      rm.className = 'rm'; rm.textContent = '✕'; rm.setAttribute('aria-label', 'Remove ' + p);
+      rm.onclick = () => { delete noteState[p]; renderNote(); };
+      head.appendChild(rm);
+      row.appendChild(head);
+      const inp = document.createElement('input');
+      inp.placeholder = st.v === 'good'
+        ? 'What worked — e.g. “held streamline off every wall”'
+        : 'What to fix — e.g. “late breath going into the turn”';
+      inp.value = st.text;
+      inp.oninput = () => { noteState[p].text = inp.value; };
+      row.appendChild(inp);
+      flaggedEl.appendChild(row);
+    });
+  }
+  function setVerdict(v) {
+    if (!pending) return;
+    noteState[pending] = { v: v, text: (noteState[pending] || {}).text || '' };
+    pending = null;
+    verdictEl.classList.remove('show');
+    renderNote();
+  }
+  document.getElementById('v-good').onclick = () => setVerdict('good');
+  document.getElementById('v-bad').onclick = () => setVerdict('bad');
+
+  // Popups
+  const ovAct = document.getElementById('ov-act'), ovProf = document.getElementById('ov-prof');
+  const actName = document.getElementById('act-name'), actSub = document.getElementById('act-sub');
+  const profName = document.getElementById('prof-name'), profSub = document.getElementById('prof-sub');
+  let current = { name: 'Liam Chen', team: 'SHRK', ctx: '' };
+  document.querySelectorAll('.sw').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      current = { name: el.dataset.sw, team: el.dataset.team, ctx: el.dataset.ctx || '' };
+      actName.innerHTML = current.name + ' <span class="chev">› profile</span>';
+      actSub.textContent = current.team + (current.ctx ? ' · ' + current.ctx : '');
+      noteState = {}; pending = null;
+      verdictEl.classList.remove('show');
+      renderNote();
+      ovAct.classList.add('show');
+    });
+  });
+  actName.onclick = () => {
+    profName.textContent = current.name;
+    profSub.textContent = current.team + ' · Boys 13–14';
+    ovAct.classList.remove('show');
+    ovProf.classList.add('show');
+  };
+  document.querySelectorAll('[data-close]').forEach(b => {
+    b.onclick = () => document.getElementById(b.dataset.close).classList.remove('show');
+  });
+  [ovAct, ovProf].forEach(ov => {
+    ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('show'); });
+  });
+</script>
